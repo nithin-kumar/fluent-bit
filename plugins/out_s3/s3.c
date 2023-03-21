@@ -1358,7 +1358,7 @@ static int pre_signed_post_request(char *body, char *filename) {
         curl_mimepart *part;
         mime = curl_mime_init(curl);
         part = curl_mime_addpart(mime);
-        json_object_for_each(root, key, value) {
+        json_object_foreach(root, key, value) {
             curl_mime_name(part, key);
             curl_mime_data(part, json_string_value(value), CURL_ZERO_TERMINATED);
             part = curl_mime_addpart(mime);
