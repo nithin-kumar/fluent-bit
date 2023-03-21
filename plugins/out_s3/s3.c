@@ -42,6 +42,7 @@
 #include "string.h"
 #include "curl/curl.h"
 #include "cjson/cJSON.h"
+#include "jansson.h"
 #include "fluent-bit/flb_file.h"
 
 #define DEFAULT_S3_PORT 443
@@ -1392,10 +1393,13 @@ static int s3_put_object(struct flb_s3 *ctx, const char *tag, time_t file_first_
     flb_sds_t tmp;
     char final_body_md5[25];
 
-    fprintf(stderr, "Using pre signed post method to upload the file body %s\n", body);
-    fprintf(stderr, "pre signed post file path is %s\n", ctx->presigned_post_file);
-    pre_signed_post_request(body, ctx->presigned_post_file);
-    return FLB_OK;
+    if (ctx->presigned_post_file != NULL) {
+        fprintf(stderr, "Using pre signed post method to upload the file body %s\n", body);
+        fprintf(stderr, "pre signed post file path is %s\n", ctx->presigned_post_file);
+        pre_signed_post_request(body, ctx->presigned_post_file);
+        return FLB_OK;
+    }
+    fprintf(stderr, "Using s3 putObject to upload the file body %s\n", body);
     s3_key = flb_get_s3_key(ctx->s3_key_format, file_first_log_time, tag,
                             ctx->tag_delimiters, ctx->seq_index);
     if (!s3_key) {
