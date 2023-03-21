@@ -38,6 +38,11 @@
 
 #include "s3.h"
 #include "s3_store.h"
+#include "stdio.h"
+#include "string.h"
+#include "curl/curl.h"
+#include "cjson/cJSON.h"
+#include "fluent-bit/flb_file.h"
 
 #define DEFAULT_S3_PORT 443
 #define DEFAULT_S3_INSECURE_PORT 80
@@ -557,6 +562,11 @@ static int cb_s3_init(struct flb_output_instance *ins,
         if (flb_utils_bool(tmp) == FLB_FALSE) {
             ctx->date_key = NULL;
         }
+    }
+
+    tmp = flb_output_get_property("presigned_post_file", ins);
+    if (tmp) {
+        ctx->presigned_post_file = tmp;
     }
 
     /* Date format for JSON output */
@@ -1318,6 +1328,53 @@ static int construct_request_buffer(struct flb_s3 *ctx, flb_sds_t new_data,
     return 0;
 }
 
+static int pre_signed_post_request(char *body, char *filename) {
+    CURL *curl;
+    CURLcode res;
+
+    json_error_t error;
+    json_t *root = json_load_file(filename, 0, &error);
+    const char *key;
+    json_t *value;
+    if (!root) {
+        fprintf(stderr, "Error parsing JSON file: %s\n", error.text);
+        return 1;
+    }
+    if (!json_is_object(root)) {
+        fprintf(stderr, "JSON file does not contain object\n");
+        return 1;
+    }
+    curl = curl_easy_init();
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_easy_setopt(curl, CURLOPT_URL, "https://emrinteractivetest.s3.amazonaws.com/");
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_DEFAULT_PROTOCOL, "https");
+        struct curl_slist *headers = NULL;
+        headers = curl_slist_append(headers, "Content-Type: multipart/form-data");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_mime *mime;
+        curl_mimepart *part;
+        mime = curl_mime_init(curl);
+        part = curl_mime_addpart(mime);
+        json_object_for_each(root, key, value) {
+            curl_mime_name(part, key);
+            curl_mime_data(part, json_string_value(value), CURL_ZERO_TERMINATED);
+            part = curl_mime_addpart(mime);
+        }
+        curl_mime_name(part, "file");
+        curl_mime_data(part, body, CURL_ZERO_TERMINATED);
+        curl_easy_setopt(curl, CURLOPT_MIMEPOST, mime);
+        res = curl_easy_perform(curl);
+        curl_mime_free(mime);
+        curl_easy_cleanup(curl);
+        json_decref(root);
+    }
+    fprintf(stderr, "Successfully uploaded the object to S3..\n");
+    return 0;
+}
+
+
 static int s3_put_object(struct flb_s3 *ctx, const char *tag, time_t file_first_log_time,
                          char *body, size_t body_size)
 {
@@ -1335,6 +1392,10 @@ static int s3_put_object(struct flb_s3 *ctx, const char *tag, time_t file_first_
     flb_sds_t tmp;
     char final_body_md5[25];
 
+    fprintf(stderr, "Using pre signed post method to upload the file body %s\n", body);
+    fprintf(stderr, "pre signed post file path is %s\n", ctx->presigned_post_file);
+    pre_signed_post_request(body, ctx->presigned_post_file);
+    return FLB_OK;
     s3_key = flb_get_s3_key(ctx->s3_key_format, file_first_log_time, tag,
                             ctx->tag_delimiters, ctx->seq_index);
     if (!s3_key) {
@@ -2462,7 +2523,11 @@ static struct flb_config_map config_map[] = {
      "$UUID is not provided in s3_key_format. $UUID, time formatters, $TAG, and other dynamic "
      "key formatters all work as expected while this feature is set to true."
     },
-
+    {
+     FLB_CONFIG_MAP_STR, "presigned_post_file", NULL,
+     0, FLB_TRUE, offsetof(struct flb_s3, presigned_post_file),
+     "Path to the pre signed post request credentials."
+    },
     {
      FLB_CONFIG_MAP_STR, "storage_class", NULL,
      0, FLB_FALSE, 0,

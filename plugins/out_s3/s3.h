@@ -104,6 +104,7 @@ struct flb_s3 {
     char *bucket;
     char *region;
     char *s3_key_format;
+    char *presigned_post_file;
     char *tag_delimiters;
     char *endpoint;
     char *sts_endpoint;
