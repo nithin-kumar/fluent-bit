@@ -41,7 +41,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "curl/curl.h"
-#include "cjson/cJSON.h"
+//#include "cjson/cJSON.h"
 #include "jansson.h"
 #include "fluent-bit/flb_file.h"
 
