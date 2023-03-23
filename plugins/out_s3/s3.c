@@ -1332,7 +1332,6 @@ static int construct_request_buffer(struct flb_s3 *ctx, flb_sds_t new_data,
 static int pre_signed_post_request(char *body, char *filename) {
     CURL *curl;
     CURLcode res;
-    json_error_t error;
     // TODO: MOVE this to a function
     json_error_t error;
     FILE *fp = fopen(filename, "r");
@@ -1360,7 +1359,7 @@ static int pre_signed_post_request(char *body, char *filename) {
     }
     buffer[j] = '\0';
 
-    root = json_loads(buffer, 0, &error);
+    json_t *root = json_loads(buffer, 0, &error);
     if(!root) {
         fprintf(stderr, "Error parsing JSON file :%s\n", error.text);
         return 1;
