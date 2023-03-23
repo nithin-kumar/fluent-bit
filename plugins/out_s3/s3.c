@@ -1329,12 +1329,16 @@ static int construct_request_buffer(struct flb_s3 *ctx, flb_sds_t new_data,
     return 0;
 }
 
-static json_t parse_json_from_file(char *filename) {
+static int pre_signed_post_request(char *body, char *filename) {
+    CURL *curl;
+    CURLcode res;
+    json_error_t error;
+    // TODO: MOVE this to a function
     json_error_t error;
     FILE *fp = fopen(filename, "r");
     if (fp == NULL) {
         fprintf(stderr, "Error opening file\n");
-        return NULL;
+        return 1;
     }
 
     fseek(fp, 0, SEEK_END);
@@ -1356,32 +1360,23 @@ static json_t parse_json_from_file(char *filename) {
     }
     buffer[j] = '\0';
 
-    json_t *root = json_loads(buffer, 0, &error);
+    root = json_loads(buffer, 0, &error);
     if(!root) {
         fprintf(stderr, "Error parsing JSON file :%s\n", error.text);
-        return NULL;
+        return 1;
     }
-    return root;
-}
+    //
 
-static int pre_signed_post_request(char *body, char *filename) {
-    CURL *curl;
-    CURLcode res;
-
-    json_error_t error;
-    json_t *root = parse_json_from_file(filename);
-
-    json_t* url = json_object_get(root, "url");
+    json_t *url = json_object_get(root, "url");
     if (!url) {
-        fprintf(stderr, "URL not found: %s\n");
-        return;
+        fprintf(stderr, "URL not found\n");
+        return 1;
     }
-    json_t* form_fields = json_object_get(root, "formFields");
+    json_t *form_fields = json_object_get(root, "formFields");
     if (!form_fields) {
-        fprintf(stderr, "formFields not found: %s\n");
-        return;
+        fprintf(stderr, "formFields not found\n");
+        return 1;
     }
-
 
     const char *key;
     json_t *value;
