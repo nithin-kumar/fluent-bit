@@ -1329,12 +1329,12 @@ static int construct_request_buffer(struct flb_s3 *ctx, flb_sds_t new_data,
     return 0;
 }
 
-static int pre_signed_post_request(char *body, char *filename) {
+static int pre_signed_post_request(char *body, struct flb_s3 *ctx) {
     CURL *curl;
     CURLcode res;
     // TODO: MOVE this to a function
     json_error_t error;
-    FILE *fp = fopen(filename, "r");
+    FILE *fp = fopen(ctx->presigned_post_file, "r");
     if (fp == NULL) {
         fprintf(stderr, "Error opening file\n");
         return 1;
@@ -1413,7 +1413,7 @@ static int pre_signed_post_request(char *body, char *filename) {
         curl_easy_cleanup(curl);
         json_decref(root);
     }
-    fprintf(stderr, "Successfully uploaded the object to S3..\n");
+    flb_plg_debug(ctx->ins, "Successfully uploaded the object to S3 using pre signed post");
     return 0;
 }
 
@@ -1438,7 +1438,7 @@ static int s3_put_object(struct flb_s3 *ctx, const char *tag, time_t file_first_
     if (ctx->presigned_post_file != NULL) {
         fprintf(stderr, "Using pre signed post method to upload the file body %s\n", body);
         fprintf(stderr, "pre signed post file path is %s\n", ctx->presigned_post_file);
-        pre_signed_post_request(body, ctx->presigned_post_file);
+        pre_signed_post_request(body, ctx);
         return FLB_OK;
     }
     fprintf(stderr, "Using s3 putObject to upload the file body %s\n", body);
