@@ -1329,12 +1329,60 @@ static int construct_request_buffer(struct flb_s3 *ctx, flb_sds_t new_data,
     return 0;
 }
 
+static json_t parse_json_from_file(char *filename) {
+    json_error_t error;
+    FILE *fp = fopen(filename, "r");
+    if (fp == NULL) {
+        fprintf(stderr, "Error opening file\n");
+        return NULL;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    char *buffer = malloc(file_size + 1);
+    fread(buffer, 1, file_size, fp);
+    fclose(fp);
+    buffer[file_size] = '\0';
+
+    int i, j;
+    int n = strlen(buffer);
+
+    for (i = 0, j = 0; i < n; i++, j++) {
+        if (buffer[i] == '\\' && buffer[i+1] == '"') {
+            i++;
+        }
+        buffer[j] = buffer[i];
+    }
+    buffer[j] = '\0';
+
+    json_t *root = json_loads(buffer, 0, &error);
+    if(!root) {
+        fprintf(stderr, "Error parsing JSON file :%s\n", error.text);
+        return NULL;
+    }
+    return root;
+}
+
 static int pre_signed_post_request(char *body, char *filename) {
     CURL *curl;
     CURLcode res;
 
     json_error_t error;
-    json_t *root = json_load_file(filename, 0, &error);
+    json_t *root = parse_json_from_file(filename);
+
+    json_t* url = json_object_get(root, "url");
+    if (!url) {
+        fprintf(stderr, "URL not found: %s\n");
+        return;
+    }
+    json_t* form_fields = json_object_get(root, "formFields");
+    if (!form_fields) {
+        fprintf(stderr, "formFields not found: %s\n");
+        return;
+    }
+
+
     const char *key;
     json_t *value;
     if (!root) {
@@ -1348,7 +1396,7 @@ static int pre_signed_post_request(char *body, char *filename) {
     curl = curl_easy_init();
     if(curl) {
         curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
-        curl_easy_setopt(curl, CURLOPT_URL, "https://emrinteractivetest.s3.amazonaws.com/");
+        curl_easy_setopt(curl, CURLOPT_URL, json_string_value(url));
         curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_DEFAULT_PROTOCOL, "https");
         struct curl_slist *headers = NULL;
@@ -1358,7 +1406,7 @@ static int pre_signed_post_request(char *body, char *filename) {
         curl_mimepart *part;
         mime = curl_mime_init(curl);
         part = curl_mime_addpart(mime);
-        json_object_foreach(root, key, value) {
+        json_object_foreach(form_fields, key, value) {
             curl_mime_name(part, key);
             curl_mime_data(part, json_string_value(value), CURL_ZERO_TERMINATED);
             part = curl_mime_addpart(mime);
